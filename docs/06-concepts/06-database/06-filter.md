@@ -26,6 +26,7 @@ Not equals is the negated version of equals.
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.name.notEquals('Bob')
 );
 ```
@@ -38,6 +39,7 @@ Compare a column to a value, these operators are support for `int`, `double`, `D
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.age > 25
 );
 ```
@@ -46,6 +48,7 @@ In the example we fetch all users that are older than 25 years old.
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.age >= 25
 );
 ```
@@ -54,6 +57,7 @@ In the example we fetch users that are 25 years old or older.
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.age < 25
 );
 ```
@@ -62,6 +66,7 @@ In the example we fetch all users that are younger than 25 years old.
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.age <= 25
 );
 ```
@@ -70,10 +75,11 @@ In the example we fetch all users that are 25 years old or younger.
 
 ### Between
 
-The between method takes two values and checks if the columns value is between the two input variables *inclusively*.
+The between method takes two values and checks if the columns value is between the two input variables _inclusively_.
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.age.between(18, 65)
 );
 ```
@@ -84,6 +90,7 @@ The 'not between' operation functions similarly to 'between' but it negates the 
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.age.notBetween(18, 65)
 );
 ```
@@ -96,6 +103,7 @@ In set can be used to match with several values at once. This method functions t
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.name.inSet({'Alice', 'Bob'})
 );
 ```
@@ -106,6 +114,7 @@ The 'not in set' operation functions similarly to `inSet`, but it negates the co
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.name.notInSet({'Alice', 'Bob'})
 );
 ```
@@ -121,17 +130,18 @@ Two special characters enables matching against partial entries.
 - **`%`** Matching any sequence of character.
 - **`_`** Matching any single character.
 
-| String | Matcher | Is matching |
-|--|--|--|
-| abc | a% | true |
-| abc | _b% | true |
-| abc | a_c | true |
-| abc | b_ | false |
+| String | Matcher | Is matching |
+| ------ | ------- | ----------- |
+| abc    | a%      | true        |
+| abc    | \_b%    | true        |
+| abc    | a_c     | true        |
+| abc    | b\_     | false       |
 
 We use like to match against a partial string.
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.name.like('A%')
 );
 ```
@@ -142,6 +152,7 @@ There is a negated version of like that can be used to exclude rows from the res
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.name.notLike('B%')
 );
 ```
@@ -154,6 +165,7 @@ In the example we fetch all users with a name that does not start with B.
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.name.ilike('a%')
 );
 ```
@@ -164,6 +176,7 @@ There is a negated version of `ilike` that can be used to exclude rows from the 
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.name.notIlike('b%')
 );
 ```
@@ -178,21 +191,113 @@ The `&` operator is used to chain two statements together with an `and` operatio
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => (t.name.equals('Alice') & (t.age > 25))
 );
 ```
 
-In the example we fetch all users with the name "Alice" *and* are older than 25.
+In the example we fetch all users with the name "Alice" _and_ are older than 25.
 
 The `|` operator is used to chain two statements together with an `or` operation.
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => (t.name.like('A%') | t.name.like('B%'))
 );
 ```
 
-In the example we fetch all users that has a name that starts with A *or* B.
+In the example we fetch all users that has a name that starts with A _or_ B.
+
+The `~` operator is used to negate an expression with a `not` operation.
+
+```dart
+await User.db.find(
+  session,
+  where: (t) => ~t.name.equals('Alice')
+);
+```
+
+In the example we fetch all users that do _not_ have the name "Alice".
+
+The `~` operator can also be used with more complex expressions:
+
+```dart
+await User.db.find(
+  session,
+  where: (t) => ~(t.name.like('A%') | t.age > 25)
+);
+```
+
+In the example we fetch all users that do _not_ have a name starting with "A" _and_ are _not_ older than 25.
+
+### Vector distance operators
+
+All vector field types support specialized distance operations for similarity search. Available vector distance operations:
+
+**Vector, HalfVector, and SparseVector fields:**
+
+- `distanceL2` - Euclidean (L2) distance.
+- `distanceInnerProduct` - Inner product distance.
+- `distanceCosine` - Cosine distance.
+- `distanceL1` - Manhattan or taxicab (L1) distance.
+
+**Bit vector fields:**
+
+- `distanceHamming` - Hamming distance.
+- `distanceJaccard` - Jaccard distance.
+
+You can use vector distance operations with numeric comparisons for filtering and ordering:
+
+```dart
+// The vector to compare against
+var queryVector = Vector([0.1, 0.2, 0.3, ...]);
+var sparseQuery = SparseVector([0.0, 1.0, 0.0, 2.5, ...]);
+var binaryQuery = Bit([1, 0, 1, 1, 0, ...]);
+
+// Find top documents similar to a query vector
+var similarDocs = await Document.db.find(
+  session,
+  where: (t) => t.embedding.distanceCosine(queryVector) < 0.5,
+  orderBy: (t) => t.embedding.distanceCosine(queryVector),
+  limit: 10,
+);
+
+// Search using sparse vectors
+var keywordMatches = await Document.db.find(
+  session,
+  where: (t) => t.keywords.distanceInnerProduct(sparseQuery) < 0.3,
+  orderBy: (t) => t.keywords.distanceInnerProduct(sparseQuery),
+  limit: 5,
+);
+
+// Search using binary vectors with Hamming distance
+var binaryMatches = await Document.db.find(
+  session,
+  where: (t) => t.hash.distanceHamming(binaryQuery) < 10,
+  orderBy: (t) => t.hash.distanceHamming(binaryQuery),
+  limit: 5,
+);
+
+// Filter by distance range
+var mediumSimilarity = await Document.db.find(
+  session,
+  where: (t) => t.embedding.distanceL2(queryVector).between(0.3, 0.8),
+);
+
+// Combine with other filters
+var filteredSimilarity = await Document.db.find(
+  session,
+  where: (t) => t.category.equals('article') &
+                (t.embedding.distanceCosine(queryVector) < 0.7),
+  orderBy: (t) => t.embedding.distanceCosine(queryVector),
+  limit: 10,
+);
+```
+
+:::tip
+For optimal performance with vector similarity searches, consider creating specialized vector indexes (HNSW or IVFFLAT) on your vector fields. See the [Vector indexes](indexing#vector-indexes) section for more details. To fine-tune query execution, you can also set appropriate [runtime parameters](runtime-parameters) for vector queries.
+:::
 
 ## Relation operations
 
@@ -204,6 +309,7 @@ For 1:1 relations the columns of the relation can be accessed directly on the re
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.address.street.like('%road%')
 );
 ```
@@ -220,6 +326,7 @@ Count can be used to count the number of related entries in a 1:n relation. The 
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.orders.count() > 3
 );
 ```
@@ -230,6 +337,7 @@ We can apply a sub-filter to the `count` operator filter the related entries bef
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.orders.count((o) => o.itemType.equals('book')) > 3
 );
 ```
@@ -242,6 +350,7 @@ None can be used to retrieve rows that have no related entries in a 1:n relation
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.orders.none()
 );
 ```
@@ -252,6 +361,7 @@ We can apply a sub-filter to the `none` operator to filter the related entries. 
 
 ```dart
 await User.db.find(
+  session,
   where:((t) => t.orders.none((o) => o.itemType.equals('book')))
 );
 ```
@@ -264,6 +374,7 @@ Any works similarly to the `any` method on lists in Dart. If there exists any re
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.orders.any()
 );
 ```
@@ -274,6 +385,7 @@ We can apply a sub-filter to the `any` operator to filter the related entries. M
 
 ```dart
 await User.db.find(
+  session,
   where:((t) => t.orders.any((o) => o.itemType.equals('book')))
 );
 ```
@@ -286,6 +398,7 @@ Every works similarly to the `every` method on lists in Dart. If every related e
 
 ```dart
 await User.db.find(
+  session,
   where: (t) => t.orders.every((o) => o.itemType.equals('book'))
 );
 ```

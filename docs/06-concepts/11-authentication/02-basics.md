@@ -2,11 +2,12 @@
 
 Serverpod automatically checks if the user is logged in and if the user has the right privileges to access the endpoint. When using the `serverpod_auth` module you will not have to worry about keeping track of tokens, refreshing them or, even including them in requests as this all happens automatically under the hood.
 
-The `Session` object provides information about the current user. A unique `userId` identifies a user. You should use this id whenever you a referring to a user. Access the id of a signed-in user through the `authenticated` asynchronous getter of the `Session` object.
+The `Session` object provides information about the current user. A unique `userIdentifier` identifies a user. You should use this id whenever you a referring to a user. Access the id of a signed-in user through the `authenticated` asynchronous getter of the `Session` object. Since the default implementation of `serverpod_auth` uses numeric IDs for the users, there is a convenience getter `userId` on the `AuthenticationInfo`, which returns the integer value.
 
 ```dart
 Future<void> myMethod(Session session) async {
   final authenticationInfo = await session.authenticated;
+  final userIdentifier = authenticationInfo?.userIdentifier;
   final userId = authenticationInfo?.userId;
   ...
 }
@@ -36,6 +37,57 @@ class MyEndpoint extends Endpoint {
   ...
 }
 ```
+
+## Explicitly allowing unauthenticated access
+
+In some cases, you may want to explicitly allow certain endpoints or methods to be accessed without authentication. Serverpod provides the `@unauthenticatedClientCall` annotation for this purpose.
+
+When an endpoint or method is annotated with `@unauthenticatedClientCall`:
+
+- No authentication will be added to the header on the client when calling it.
+- The server will receive calls as if there is no user signed in.
+
+:::info
+Under the hood, the `@unauthenticatedClientCall` annotation makes the client omit authentication headers for calls to the annotated endpoint or method. On the server side, it ensures that the session is treated as unauthenticated for those calls, regardless of any existing authentication state.
+:::
+
+You can use this annotation in two ways:
+
+1. On the entire endpoint class to make all methods unauthenticated:
+
+```dart
+@unauthenticatedClientCall
+class UnauthenticatedEndpoint extends Endpoint {
+  Future<bool> someMethod(Session session) async {
+    return session.isUserSignedIn; // Will always return false
+  }
+
+  Stream<bool> someStream(Session session) async* {
+    yield await session.isUserSignedIn; // Will always return false
+  }
+}
+```
+
+2. On specific methods to make only those methods unauthenticated:
+
+```dart
+class PartiallyUnauthenticatedEndpoint extends Endpoint {
+  @unauthenticatedClientCall
+  Future<bool> publicMethod(Session session) async {
+    return session.isUserSignedIn; // Will always return false
+  }
+
+  Future<bool> authenticatedMethod(Session session) async {
+    return session.isUserSignedIn;
+  }
+}
+```
+
+This is particularly useful for endpoints that must not receive authentication, such as JWT refresh endpoints.
+
+:::warning
+Using `@unauthenticatedClientCall` on an endpoint or method that also has `requireLogin` set to true will lead to a conflict. Since the client will suppress sending authentication information, but the server will expect it, calls to such endpoints or methods will always fail with an authentication error.
+:::
 
 ## Authorization on endpoints
 
@@ -130,8 +182,7 @@ await client.modules.auth.status.signOutAllDevices();
 
 This status endpoint retrieves the user ID from session's authentication information, then revokes all authentication keys related to that user.
 
-:::info 
-<span id="deprecated-signout-endpoint"></span>
+:::info
 The `signOut` status endpoint is deprecated. Use `signOutDevice` or `signOutAllDevices` instead.
 
 ```dart
@@ -139,4 +190,4 @@ await client.modules.auth.status.signOut();  // Deprecated
 ```
 
 The behavior of `signOut` is controlled by `legacyUserSignOutBehavior`, which you can adjust in the [configure authentication](setup#configure-authentication) section. This allows you to control the signout behaviour of already shipped clients.
-::: 
+:::
